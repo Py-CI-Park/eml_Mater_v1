@@ -22,8 +22,34 @@ function App() {
 
   // 초기 설정 로드
   useEffect(() => {
-    loadConfig();
+    checkServerConnection();
   }, []);
+  
+  // 서버 연결 확인
+  const checkServerConnection = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // 헬스체크 먼저 수행
+      await emailAPI.healthCheck();
+      console.log('✅ 백엔드 서버 연결 성공');
+      
+      // 연결 성공 후 설정 로드
+      await loadConfig();
+    } catch (err) {
+      console.error('❌ 백엔드 서버 연결 실패:', err);
+      const errorInfo = handleAPIError(err);
+      
+      if (errorInfo.type === 'network') {
+        setError('백엔드 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.');
+      } else {
+        setError(`서버 오류: ${errorInfo.message}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // 설정 로드 후 폴더 목록 로드
   useEffect(() => {
@@ -177,6 +203,55 @@ function App() {
       </div>
     );
   };
+
+  // 초기 로딩 화면
+  if (loading && !config) {
+    return (
+      <div className="app-container">
+        <div className="d-flex justify-content-center align-items-center" style={{height: '100vh'}}>
+          <div className="text-center">
+            <Spinner animation="border" variant="primary" size="lg" />
+            <h4 className="mt-3">🔄 이메일 관리자 시작 중...</h4>
+            <p className="text-muted">서버 연결을 확인하고 있습니다.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 서버 연결 오류 화면
+  if (error && !config) {
+    return (
+      <div className="app-container">
+        <div className="d-flex justify-content-center align-items-center" style={{height: '100vh'}}>
+          <div className="text-center">
+            <div className="alert alert-danger" style={{maxWidth: '600px'}}>
+              <h4>⚠️ 서버 연결 오류</h4>
+              <p className="mb-3">{error}</p>
+              <hr />
+              <h6>문제 해결 방법:</h6>
+              <ol className="text-start mb-3">
+                <li>'이메일관리자_실행.bat' 파일을 실행하세요</li>
+                <li>백엔드 서버(포트 5000)가 시작될 때까지 기다리세요</li>
+                <li>방화벽이나 백신 프로그램을 확인하세요</li>
+              </ol>
+              <div className="d-grid gap-2">
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => window.location.reload()}
+                >
+                  🔄 다시 시도
+                </button>
+                <small className="text-muted">
+                  백엔드 서버가 시작된 후 다시 시도하세요.
+                </small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">

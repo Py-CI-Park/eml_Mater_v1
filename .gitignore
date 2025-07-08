@@ -1,0 +1,356 @@
+# ================================================================
+# .gitignore for EML Manager v1.0
+# Web-based email management application for .eml files
+# ================================================================
+
+# ================================================================
+# Python related files
+# ================================================================
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Python distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Python testing
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# ================================================================
+# Node.js / React related files
+# ================================================================
+# Dependencies
+frontend/node_modules/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Package manager files
+frontend/package-lock.json
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# ESLint cache
+.eslintcache
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# React build output
+frontend/build/
+build/
+
+# ================================================================
+# Database and Configuration files
+# ================================================================
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+backend/email_manager.db
+backend/email_manager_backup_*.db
+
+# Configuration files (may contain sensitive paths)
+backend/config.json
+backend/config.json.backup
+config.json
+config.json.backup
+
+# ================================================================
+# Log files and temporary files
+# ================================================================
+# Installation and runtime logs
+*.log
+install_log.txt
+install_log.log
+install_verification.log
+환경정리_로그.log
+단계별검증_로그.log
+설치전체크_로그.log
+배치파일_테스트_결과.log
+
+# Backup log files
+install_log_backup*.txt
+install_log_backup*.log
+install_log_corrupted_backup.txt
+
+# Python installation logs
+backend/install_log.txt
+backend/python_install.log
+backend/python_step_install.log
+
+# Node.js installation logs
+frontend/install_log.txt
+frontend/node_step_install.log
+frontend/node_install.log
+
+# Server test logs
+backend/server_test.log
+
+# Temporary files
+temp_*.py
+temp_*.bat
+temp_*.txt
+temp_*.log
+test_*.tmp
+test_*.log
+
+# ================================================================
+# Email data and user content
+# ================================================================
+# Test email folders
+테스트용_이메일_폴더/
+test_email_folder/
+email_data/
+eml_files/
+
+# User-uploaded email files
+*.eml
+
+# ================================================================
+# System and OS files
+# ================================================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ================================================================
+# IDE and Editor files
+# ================================================================
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# ================================================================
+# Runtime and generated files
+# ================================================================
+# Flask development server
+instance/
+.webassets-cache
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# ================================================================
+# Security and sensitive files
+# ================================================================
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# API keys and secrets
+secrets.json
+.secrets
+api_keys.txt
+passwords.txt
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+*.cert
+
+# ================================================================
+# Desktop shortcuts and Windows specific
+# ================================================================
+# Desktop shortcuts created by installer
+"이메일 관리자.lnk"
+"Email Manager.lnk"
+
+# Generated batch files from installer
+이메일관리자_실행.bat
+이메일관리자_종료.bat
+이메일관리자_상태확인.bat
+
+# ================================================================
+# Backup and archive files
+# ================================================================
+# Compressed files
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*.tmp
+
+# ================================================================
+# Project-specific exclusions
+# ================================================================
+# Email processing temporary files
+attachments_temp/
+email_temp/
+processing/
+
+# User configuration backups
+user_configs/
+backup_configs/
+
+# Performance monitoring
+performance_logs/
+monitoring/
+
+# Development and testing
+dev_data/
+test_data/
+sample_emails/
+
+# Documentation builds
+docs/build/
+docs/_build/
+
+# ================================================================
+# End of .gitignore
+# ================================================================

@@ -35,6 +35,9 @@ api.interceptors.response.use(
 
 // API 함수들
 export const emailAPI = {
+  // 서버 상태 확인
+  healthCheck: () => api.get('/health'),
+  
   // 설정 관리
   getConfig: () => api.get('/config'),
   saveConfig: (config) => api.post('/config', config),

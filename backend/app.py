@@ -9,7 +9,23 @@ from models import init_db, get_db
 import logging
 
 app = Flask(__name__)
-CORS(app)  # React 앱과의 통신을 위해 CORS 설정
+
+# 강화된 CORS 설정
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
+
+# 추가 헤더 설정
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -18,6 +34,30 @@ logger = logging.getLogger(__name__)
 # 설정
 EMAIL_ROOT = ""  # 설정에서 지정될 예정
 CONFIG_FILE = "config.json"
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """서버 상태 확인"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'message': '이메일 관리자 백엔드 서버가 정상 작동 중입니다.'
+    })
+
+@app.route('/', methods=['GET'])
+def root():
+    """루트 경로"""
+    return jsonify({
+        'message': '이메일 관리자 백엔드 API',
+        'version': '1.0.0',
+        'endpoints': [
+            '/api/health - 서버 상태 확인',
+            '/api/config - 설정 관리',
+            '/api/folders - 폴더 목록',
+            '/api/emails - 이메일 목록',
+            '/api/stats - 통계 정보'
+        ]
+    })
 
 def load_config():
     """설정 파일 로드"""
@@ -253,9 +293,51 @@ def get_stats():
         logger.error(f"통계 조회 오류: {e}")
         return jsonify({'error': str(e)}), 500
 
+def initialize_app():
+    """애플리케이션 초기화"""
+    try:
+        # 설정 로드
+        logger.info("설정 파일 로드 중...")
+        load_config()
+        logger.info(f"이메일 루트 경로: {EMAIL_ROOT or '미설정'}")
+        
+        # 데이터베이스 초기화
+        logger.info("데이터베이스 초기화 중...")
+        init_db()
+        logger.info("데이터베이스 초기화 완료")
+        
+        # 기본 설정 확인
+        if not EMAIL_ROOT:
+            logger.warning("이메일 루트 폴더가 설정되지 않았습니다. 웹 인터페이스에서 설정해주세요.")
+        
+        return True
+    except Exception as e:
+        logger.error(f"애플리케이션 초기화 실패: {e}")
+        return False
+
 if __name__ == '__main__':
-    # 설정 로드 및 데이터베이스 초기화
-    load_config()
-    init_db()
+    print("=" * 60)
+    print("📧 이메일 관리자 백엔드 서버 시작")
+    print("=" * 60)
     
-    app.run(host='127.0.0.1', port=5000, debug=True)
+    # 애플리케이션 초기화
+    if not initialize_app():
+        print("❌ 서버 초기화 실패!")
+        input("아무 키나 눌러 종료...")
+        exit(1)
+    
+    print("✅ 서버 초기화 완료")
+    print(f"🌐 서버 주소: http://127.0.0.1:5000")
+    print(f"📊 프론트엔드: http://localhost:3000")
+    print("🔧 설정: /api/config")
+    print("=" * 60)
+    
+    try:
+        app.run(host='127.0.0.1', port=5000, debug=False)
+    except KeyboardInterrupt:
+        print("\n⏹️  서버 종료 중...")
+    except Exception as e:
+        print(f"❌ 서버 오류: {e}")
+        input("아무 키나 눌러 종료...")
+    finally:
+        print("👋 서버가 종료되었습니다.")
