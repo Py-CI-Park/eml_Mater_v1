@@ -7,6 +7,7 @@ from datetime import datetime
 from email_parser import EmailParser
 from models import init_db, get_db
 import logging
+from io import BytesIO
 
 app = Flask(__name__)
 
@@ -151,8 +152,13 @@ def get_emails(folder_path):
                     logger.warning(f"이메일 파싱 실패: {filename}, 오류: {e}")
                     continue
         
-        # 날짜순 정렬 (최신순)
-        emails.sort(key=lambda x: x.get('date_parsed', datetime.min), reverse=True)
+        # 날짜순 정렬 (최신순). None 대비 후 정렬
+        emails.sort(key=lambda x: (x.get('date_parsed') or datetime.min), reverse=True)
+
+        # JSON 직렬화 호환을 위해 datetime 제거
+        for item in emails:
+            if 'date_parsed' in item:
+                item.pop('date_parsed', None)
         
         return jsonify({'emails': emails})
     except Exception as e:
@@ -230,8 +236,13 @@ def search_emails():
                         logger.warning(f"검색 중 이메일 파싱 실패: {filename}, 오류: {e}")
                         continue
         
-        # 날짜순 정렬
-        results.sort(key=lambda x: x.get('date_parsed', datetime.min), reverse=True)
+        # 날짜순 정렬 (최신순). None 대비 후 정렬
+        results.sort(key=lambda x: (x.get('date_parsed') or datetime.min), reverse=True)
+
+        # JSON 직렬화 호환을 위해 datetime 제거
+        for item in results:
+            if 'date_parsed' in item:
+                item.pop('date_parsed', None)
         
         return jsonify({'results': results, 'count': len(results)})
     except Exception as e:
@@ -259,12 +270,13 @@ def get_attachment(folder_path, filename, attachment_name):
         if not attachment_data:
             return jsonify({'error': '첨부파일을 찾을 수 없습니다.'}), 404
         
-        # 임시 파일로 저장 후 전송
-        temp_path = f"/tmp/{attachment_name}"
-        with open(temp_path, 'wb') as f:
-            f.write(attachment_data)
-        
-        return send_file(temp_path, as_attachment=True, download_name=attachment_name)
+        # 메모리 버퍼로 직접 전송 (플랫폼 독립)
+        return send_file(
+            BytesIO(attachment_data),
+            as_attachment=True,
+            download_name=attachment_name,
+            mimetype='application/octet-stream'
+        )
     except Exception as e:
         logger.error(f"첨부파일 다운로드 오류: {e}")
         return jsonify({'error': str(e)}), 500
@@ -327,13 +339,22 @@ if __name__ == '__main__':
         exit(1)
     
     print("✅ 서버 초기화 완료")
-    print(f"🌐 서버 주소: http://127.0.0.1:5000")
+    # 설정된 호스트/포트 적용
+    try:
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            _cfg = json.load(f)
+        _host = _cfg.get('host', '127.0.0.1')
+        _port = int(_cfg.get('port', 5000))
+    except Exception:
+        _host, _port = '127.0.0.1', 5000
+
+    print(f"🌐 서버 주소: http://{_host}:{_port}")
     print(f"📊 프론트엔드: http://localhost:3000")
     print("🔧 설정: /api/config")
     print("=" * 60)
     
     try:
-        app.run(host='127.0.0.1', port=5000, debug=False)
+        app.run(host=_host, port=_port, debug=False)
     except KeyboardInterrupt:
         print("\n⏹️  서버 종료 중...")
     except Exception as e:

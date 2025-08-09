@@ -72,7 +72,8 @@ class EmailParser:
             for fmt in date_formats:
                 try:
                     parsed_date = datetime.strptime(cleaned_date, fmt)
-                    return parsed_date, parsed_date.strftime("%Y-%m-%d %H:%M:%S")
+                    # ISO 8601 문자열로 반환하여 프론트엔드 파싱 호환성 개선
+                    return parsed_date, parsed_date.isoformat()
                 except ValueError:
                     continue
             
@@ -80,7 +81,7 @@ class EmailParser:
             try:
                 from email.utils import parsedate_to_datetime
                 parsed_date = parsedate_to_datetime(cleaned_date)
-                return parsed_date, parsed_date.strftime("%Y-%m-%d %H:%M:%S")
+                return parsed_date, parsed_date.isoformat()
             except:
                 pass
             
