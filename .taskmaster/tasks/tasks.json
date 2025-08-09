@@ -176,15 +176,15 @@
           2,
           3
         ],
-        "status": "pending",
+        "status": "in-progress",
         "subtasks": [
           {
             "id": 1,
             "title": "Implement Basic FTS5 Search Functionality",
             "description": "Create the core SearchService class with basic FTS5 search functionality to query emails based on metadata and content.",
             "dependencies": [],
-            "details": "1. Implement the SearchService class with constructor and basic search method\n2. Create proper SQL query using FTS5 syntax for searching across email fields\n3. Implement field filtering to allow searching in specific fields (subject, sender, etc.)\n4. Add pagination support with limit and offset parameters\n5. Ensure proper result formatting with all necessary email metadata",
-            "status": "pending",
+            "details": "1. Implement the SearchService class with constructor and basic search method\n2. Create proper SQL query using FTS5 syntax for searching across email fields\n3. Implement field filtering to allow searching in specific fields (subject, sender, etc.)\n4. Add pagination support with limit and offset parameters\n5. Ensure proper result formatting with all necessary email metadata\n<info added on 2025-08-09T05:43:48.804Z>\n6. Implement pagination and sorting for search results:\n   - Add count() method to SearchIndexManager to get total results\n   - Enhance search_emails() to support limit, offset, and order parameters\n   - Update API endpoint (/api/search) to include limit, offset, order parameters and total count in response\n   - Create comprehensive pagination tests in tests/test_search_paging.py to verify functionality\n</info added on 2025-08-09T05:43:48.804Z>",
+            "status": "done",
             "testStrategy": "1. Unit test the search method with various simple queries\n2. Test searching in different field combinations\n3. Verify pagination works correctly\n4. Test with sample email dataset to ensure correct results\n5. Benchmark basic search performance"
           },
           {
@@ -685,7 +685,7 @@
     ],
     "metadata": {
       "created": "2025-08-09T01:49:31.958Z",
-      "updated": "2025-08-09T05:30:15.793Z",
+      "updated": "2025-08-09T05:43:53.601Z",
       "description": "Tasks for master context"
     }
   }

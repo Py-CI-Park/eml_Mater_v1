@@ -289,8 +289,73 @@ class SearchIndexManager:
     """FTS5 기반 검색 도우미"""
 
     @staticmethod
-    def search_emails(query: str, limit: int = 100):
-        """emails_fts를 이용한 전체 텍스트 검색"""
+    def count(query: str) -> int:
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            try:
+                cur.execute("SELECT count(*) FROM emails_fts WHERE emails_fts MATCH ?", (query,))
+                total = int(cur.fetchone()[0])
+            except sqlite3.OperationalError:
+                like = f"%{query}%"
+                cur.execute(
+                    """
+                    SELECT count(*) FROM emails_fts
+                    WHERE subject LIKE ? OR sender LIKE ? OR recipient LIKE ? OR body_text LIKE ?
+                    """,
+                    (like, like, like, like),
+                )
+                total = int(cur.fetchone()[0])
+            conn.close()
+            return total
+        except Exception as e:
+            logger.error(f"검색 카운트 실패: {e}")
+            return 0
+
+    @staticmethod
+    def search_emails(query: str, limit: int = 100, offset: int = 0, order: str = "date_desc"):
+        """emails_fts를 이용한 전체 텍스트 검색 + emails 조인으로 날짜 정렬 지원"""
+        order_clause = "DESC" if order in ("date_desc", "date") else "ASC"
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+
+            try:
+                cur.execute(
+                    f"""
+                    SELECT e.email_path, e.subject, e.sender, e.recipient, e.date_parsed,
+                           highlight(f, 3, '<b>', '</b>') AS body_snippet
+                    FROM emails_fts f
+                    JOIN emails e ON e.email_path = f.email_path
+                    WHERE f MATCH ?
+                    ORDER BY e.date_parsed {order_clause}
+                    LIMIT ? OFFSET ?
+                    """,
+                    (query, limit, offset),
+                )
+                rows = cur.fetchall()
+            except sqlite3.OperationalError:
+                like = f"%{query}%"
+                cur.execute(
+                    f"""
+                    SELECT e.email_path, e.subject, e.sender, e.recipient, e.date_parsed,
+                           f.body_text AS body_snippet
+                    FROM emails_fts f
+                    JOIN emails e ON e.email_path = f.email_path
+                    WHERE f.subject LIKE ? OR f.sender LIKE ? OR f.recipient LIKE ? OR f.body_text LIKE ?
+                    ORDER BY e.date_parsed {order_clause}
+                    LIMIT ? OFFSET ?
+                    """,
+                    (like, like, like, like, limit, offset),
+                )
+                rows = cur.fetchall()
+
+            results = [dict(row) for row in rows]
+            conn.close()
+            return results
+        except Exception as e:
+            logger.error(f"인덱스 검색 실패: {e}")
+            return []
         try:
             conn = get_db()
             cursor = conn.cursor()

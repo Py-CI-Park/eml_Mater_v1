@@ -204,4 +204,13 @@ class EmailIndexer:
             conn.close()
         return {"total": total, "processed": processed}
 
+    def ensure_indexes(self) -> None:
+        """Optional: add helpful indexes on core table for sorting/filtering."""
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_emails_date ON emails(date_parsed)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_emails_sender ON emails(sender)")
+        conn.commit()
+        conn.close()
+
 

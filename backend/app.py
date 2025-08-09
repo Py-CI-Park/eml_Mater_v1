@@ -193,18 +193,21 @@ def get_email_content(folder_path, filename):
 
 @app.route('/api/search', methods=['POST'])
 def search_emails():
-    """FTS5 기반 이메일 검색"""
+    """FTS5 기반 이메일 검색 (페이징/정렬/total 포함)"""
     if not EMAIL_ROOT:
         return jsonify({'error': '메일 루트 폴더가 설정되지 않았습니다.'}), 400
     try:
         data = request.json or {}
         query = (data.get('query') or '').strip()
-        limit = int(data.get('limit') or 100)
+        limit = max(1, int(data.get('limit') or 50))
+        offset = max(0, int(data.get('offset') or 0))
+        order = (data.get('order') or 'date_desc')
         if not query:
             return jsonify({'error': '검색어를 입력해주세요.'}), 400
 
-        results = SearchIndexManager.search_emails(query, limit=limit)
-        return jsonify({'results': results, 'count': len(results)})
+        total = SearchIndexManager.count(query)
+        results = SearchIndexManager.search_emails(query, limit=limit, offset=offset, order=order)
+        return jsonify({'results': results, 'total': total, 'limit': limit, 'offset': offset, 'order': order})
     except Exception as e:
         logger.error(f"검색 오류: {e}")
         return jsonify({'error': str(e)}), 500
@@ -398,6 +401,7 @@ def _run_rebuild(email_root: str):
         with _index_lock:
             _index_progress["phase"] = "scanning"
         stats = indexer.full_scan_and_index()
+        indexer.ensure_indexes()
         with _index_lock:
             _index_progress.update({**stats, "phase": "completed"})
     except Exception:
@@ -413,6 +417,21 @@ def index_rebuild():
     t = Thread(target=_run_rebuild, args=(EMAIL_ROOT,), daemon=True)
     t.start()
     return jsonify({'started': True})
+
+
+@app.route('/api/index/incremental', methods=['POST'])
+def index_incremental():
+    if not EMAIL_ROOT or not os.path.exists(EMAIL_ROOT):
+        return jsonify({'error': '메일 루트 폴더가 설정되지 않았습니다.'}), 400
+    try:
+        indexer = EmailIndexer(EMAIL_ROOT)
+        indexer.initialize_schema()
+        stats = indexer.incremental_index()
+        indexer.ensure_indexes()
+        return jsonify({'success': True, **stats})
+    except Exception as e:
+        logger.error(f"증분 인덱싱 오류: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/index/progress', methods=['GET'])
