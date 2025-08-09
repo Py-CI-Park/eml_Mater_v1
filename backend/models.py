@@ -5,11 +5,15 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-DB_FILE = "email_manager.db"
+DB_FILE = os.environ.get("EMAIL_DB_PATH", "email_manager.db")
 
 def get_db():
-    """데이터베이스 연결 객체 반환"""
-    conn = sqlite3.connect(DB_FILE)
+    """데이터베이스 연결 객체 반환
+
+    환경변수 EMAIL_DB_PATH 가 설정되어 있으면 이를 우선 사용한다.
+    """
+    db_path = os.environ.get("EMAIL_DB_PATH", DB_FILE)
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row  # dict-like 접근 가능
     return conn
 
@@ -41,17 +45,23 @@ def init_db():
             )
         ''')
         
-        # 검색 인덱스 테이블 (성능 향상용)
+        # 코어 메타 테이블(emails) 및 FTS5 가상 테이블(emails_fts)
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS search_index (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email_path TEXT UNIQUE NOT NULL,
-                subject TEXT,
-                sender TEXT,
-                recipient TEXT,
-                body_text TEXT,
-                date_parsed TIMESTAMP,
-                indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS emails(
+              email_path TEXT PRIMARY KEY,
+              subject TEXT, sender TEXT, recipient TEXT,
+              date_parsed TIMESTAMP, message_id TEXT,
+              has_attachments BOOLEAN, size_bytes INTEGER,
+              sha1 TEXT
+            )
+        ''')
+
+        # FTS5 virtual table for fast search
+        cursor.execute('''
+            CREATE VIRTUAL TABLE IF NOT EXISTS emails_fts USING fts5(
+              email_path UNINDEXED,
+              subject, sender, recipient, body_text,
+              tokenize = 'unicode61'
             )
         ''')
         
@@ -276,51 +286,42 @@ class EmailStatusManager:
             }
 
 class SearchIndexManager:
-    """검색 인덱스 관리 클래스"""
-    
+    """FTS5 기반 검색 도우미"""
+
     @staticmethod
-    def update_index(email_path, email_data):
-        """검색 인덱스 업데이트"""
+    def search_emails(query: str, limit: int = 100):
+        """emails_fts를 이용한 전체 텍스트 검색"""
         try:
             conn = get_db()
             cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT OR REPLACE INTO search_index 
-                (email_path, subject, sender, recipient, body_text, date_parsed, indexed_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (
-                email_path,
-                email_data.get('subject', ''),
-                email_data.get('from', ''),
-                email_data.get('to', ''),
-                email_data.get('body_text', ''),
-                email_data.get('date_parsed')
-            ))
-            
-            conn.commit()
-            conn.close()
-            return True
-        except Exception as e:
-            logger.error(f"검색 인덱스 업데이트 실패: {e}")
-            return False
-    
-    @staticmethod
-    def search_emails(query, limit=100):
-        """검색 인덱스를 사용한 빠른 검색"""
-        try:
-            conn = get_db()
-            cursor = conn.cursor()
-            
-            search_query = f"%{query}%"
-            cursor.execute('''
-                SELECT * FROM search_index 
-                WHERE subject LIKE ? OR sender LIKE ? OR recipient LIKE ? OR body_text LIKE ?
-                ORDER BY date_parsed DESC
-                LIMIT ?
-            ''', (search_query, search_query, search_query, search_query, limit))
-            
-            results = [dict(row) for row in cursor.fetchall()]
+
+            # Use FTS5 MATCH for fast search; fallback to LIKE when needed
+            try:
+                cursor.execute(
+                    '''
+                    SELECT email_path, subject, sender, recipient, highlight(emails_fts, 3, '<b>', '</b>') AS body_snippet
+                    FROM emails_fts
+                    WHERE emails_fts MATCH ?
+                    LIMIT ?
+                    ''',
+                    (query, limit),
+                )
+                rows = cursor.fetchall()
+            except sqlite3.OperationalError:
+                # Fallback to LIKE if MATCH not available
+                like = f"%{query}%"
+                cursor.execute(
+                    '''
+                    SELECT email_path, subject, sender, recipient, body_text AS body_snippet
+                    FROM emails_fts
+                    WHERE subject LIKE ? OR sender LIKE ? OR recipient LIKE ? OR body_text LIKE ?
+                    LIMIT ?
+                    ''',
+                    (like, like, like, like, limit),
+                )
+                rows = cursor.fetchall()
+
+            results = [dict(row) for row in rows]
             conn.close()
             return results
         except Exception as e:

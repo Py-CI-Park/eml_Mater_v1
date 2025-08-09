@@ -4,14 +4,21 @@ import os
 import json
 import sqlite3
 from datetime import datetime
+from threading import Thread, Lock
 from email_parser import EmailParser
-from models import init_db, get_db
+from models import init_db, get_db, TagManager, EmailStatusManager, SearchIndexManager
+from services.indexer import EmailIndexer
+from core.path_utils import (
+    normalize_and_validate_path,
+    is_allowed_eml_filename,
+    sanitize_attachment_name,
+)
 import logging
 from io import BytesIO
 
 app = Flask(__name__)
 
-# 강화된 CORS 설정
+# 강화된 CORS 설정 (와일드카드 금지)
 CORS(app, resources={
     r"/api/*": {
         "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -20,14 +27,6 @@ CORS(app, resources={
     }
 })
 
-# 추가 헤더 설정
-@app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    return response
-
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,6 +34,10 @@ logger = logging.getLogger(__name__)
 # 설정
 EMAIL_ROOT = ""  # 설정에서 지정될 예정
 CONFIG_FILE = "config.json"
+
+# 인덱싱 진행률 상태
+_index_lock = Lock()
+_index_progress = {"total": 0, "processed": 0, "phase": "idle"}
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -129,10 +132,7 @@ def get_emails(folder_path):
         return jsonify({'error': '메일 루트 폴더가 설정되지 않았습니다.'}), 400
     
     try:
-        if folder_path == 'root':
-            full_path = EMAIL_ROOT
-        else:
-            full_path = os.path.join(EMAIL_ROOT, folder_path)
+        full_path = normalize_and_validate_path(EMAIL_ROOT, folder_path)
         
         if not os.path.exists(full_path):
             return jsonify({'error': '폴더가 존재하지 않습니다.'}), 404
@@ -141,16 +141,19 @@ def get_emails(folder_path):
         parser = EmailParser()
         
         for filename in os.listdir(full_path):
-            if filename.endswith('.eml'):
-                file_path = os.path.join(full_path, filename)
-                try:
-                    email_info = parser.parse_email_headers(file_path)
-                    email_info['filename'] = filename
-                    email_info['folder_path'] = folder_path
-                    emails.append(email_info)
-                except Exception as e:
-                    logger.warning(f"이메일 파싱 실패: {filename}, 오류: {e}")
-                    continue
+            if not is_allowed_eml_filename(filename):
+                continue
+            file_path = os.path.join(full_path, filename)
+            try:
+                email_info = parser.parse_email_headers(file_path)
+                email_info['filename'] = filename
+                # folder_path could be '' for root
+                rel_folder = os.path.relpath(full_path, EMAIL_ROOT)
+                email_info['folder_path'] = '' if rel_folder == '.' else rel_folder
+                emails.append(email_info)
+            except Exception as e:
+                logger.warning(f"이메일 파싱 실패: {filename}, 오류: {e}")
+                continue
         
         # 날짜순 정렬 (최신순). None 대비 후 정렬
         emails.sort(key=lambda x: (x.get('date_parsed') or datetime.min), reverse=True)
@@ -172,10 +175,10 @@ def get_email_content(folder_path, filename):
         return jsonify({'error': '메일 루트 폴더가 설정되지 않았습니다.'}), 400
     
     try:
-        if folder_path == 'root':
-            file_path = os.path.join(EMAIL_ROOT, filename)
-        else:
-            file_path = os.path.join(EMAIL_ROOT, folder_path, filename)
+        full_folder = normalize_and_validate_path(EMAIL_ROOT, folder_path)
+        if not is_allowed_eml_filename(filename):
+            return jsonify({'error': '허용되지 않는 파일명입니다.'}), 400
+        file_path = os.path.join(full_folder, filename)
         
         if not os.path.exists(file_path):
             return jsonify({'error': '이메일 파일이 존재하지 않습니다.'}), 404
@@ -190,60 +193,17 @@ def get_email_content(folder_path, filename):
 
 @app.route('/api/search', methods=['POST'])
 def search_emails():
-    """이메일 검색"""
+    """FTS5 기반 이메일 검색"""
     if not EMAIL_ROOT:
         return jsonify({'error': '메일 루트 폴더가 설정되지 않았습니다.'}), 400
-    
     try:
-        data = request.json
-        query = data.get('query', '').lower()
-        search_in = data.get('search_in', ['subject', 'from', 'body'])  # 검색 범위
-        
+        data = request.json or {}
+        query = (data.get('query') or '').strip()
+        limit = int(data.get('limit') or 100)
         if not query:
             return jsonify({'error': '검색어를 입력해주세요.'}), 400
-        
-        results = []
-        parser = EmailParser()
-        
-        for root, dirs, files in os.walk(EMAIL_ROOT):
-            for filename in files:
-                if filename.endswith('.eml'):
-                    file_path = os.path.join(root, filename)
-                    try:
-                        # 기본 헤더 정보 파싱
-                        email_info = parser.parse_email_headers(file_path)
-                        
-                        # 검색 조건 확인
-                        match = False
-                        if 'subject' in search_in and query in email_info.get('subject', '').lower():
-                            match = True
-                        elif 'from' in search_in and query in email_info.get('from', '').lower():
-                            match = True
-                        elif 'body' in search_in:
-                            # 본문 검색은 필요시에만 파싱 (성능 고려)
-                            full_email = parser.parse_email_full(file_path)
-                            if query in full_email.get('body_text', '').lower():
-                                match = True
-                        
-                        if match:
-                            email_info['filename'] = filename
-                            email_info['folder_path'] = os.path.relpath(root, EMAIL_ROOT)
-                            if email_info['folder_path'] == '.':
-                                email_info['folder_path'] = 'root'
-                            results.append(email_info)
-                            
-                    except Exception as e:
-                        logger.warning(f"검색 중 이메일 파싱 실패: {filename}, 오류: {e}")
-                        continue
-        
-        # 날짜순 정렬 (최신순). None 대비 후 정렬
-        results.sort(key=lambda x: (x.get('date_parsed') or datetime.min), reverse=True)
 
-        # JSON 직렬화 호환을 위해 datetime 제거
-        for item in results:
-            if 'date_parsed' in item:
-                item.pop('date_parsed', None)
-        
+        results = SearchIndexManager.search_emails(query, limit=limit)
         return jsonify({'results': results, 'count': len(results)})
     except Exception as e:
         logger.error(f"검색 오류: {e}")
@@ -256,17 +216,21 @@ def get_attachment(folder_path, filename, attachment_name):
         return jsonify({'error': '메일 루트 폴더가 설정되지 않았습니다.'}), 400
     
     try:
-        if folder_path == 'root':
-            file_path = os.path.join(EMAIL_ROOT, filename)
-        else:
-            file_path = os.path.join(EMAIL_ROOT, folder_path, filename)
+        full_folder = normalize_and_validate_path(EMAIL_ROOT, folder_path)
+        if not is_allowed_eml_filename(filename):
+            return jsonify({'error': '허용되지 않는 파일명입니다.'}), 400
+        file_path = os.path.join(full_folder, filename)
         
         if not os.path.exists(file_path):
             return jsonify({'error': '이메일 파일이 존재하지 않습니다.'}), 404
         
         parser = EmailParser()
+        # 첨부 존재 여부 확인
+        full_email = parser.parse_email_full(file_path)
+        names = {att.get('filename') for att in full_email.get('attachments', [])}
+        if attachment_name not in names:
+            return jsonify({'error': '첨부파일을 찾을 수 없습니다.'}), 404
         attachment_data = parser.get_attachment(file_path, attachment_name)
-        
         if not attachment_data:
             return jsonify({'error': '첨부파일을 찾을 수 없습니다.'}), 404
         
@@ -274,7 +238,7 @@ def get_attachment(folder_path, filename, attachment_name):
         return send_file(
             BytesIO(attachment_data),
             as_attachment=True,
-            download_name=attachment_name,
+            download_name=sanitize_attachment_name(attachment_name),
             mimetype='application/octet-stream'
         )
     except Exception as e:
@@ -305,6 +269,157 @@ def get_stats():
         logger.error(f"통계 조회 오류: {e}")
         return jsonify({'error': str(e)}), 500
 
+
+# 태그/상태 API
+@app.route('/api/tags', methods=['GET', 'POST'])
+def tags_handler():
+    try:
+        if request.method == 'GET':
+            return jsonify({'tags': TagManager.get_all_tags()})
+        data = request.json or {}
+        name = (data.get('name') or '').strip()
+        color = data.get('color') or '#007bff'
+        if not name:
+            return jsonify({'error': '태그 이름이 필요합니다.'}), 400
+        tag_id = TagManager.create_tag(name, color)
+        return jsonify({'id': tag_id, 'name': name, 'color': color})
+    except ValueError as ve:
+        return jsonify({'error': str(ve)}), 409
+    except Exception as e:
+        logger.error(f"태그 처리 오류: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tags/<int:tag_id>', methods=['DELETE'])
+def delete_tag(tag_id: int):
+    try:
+        ok = TagManager.delete_tag(tag_id)
+        if not ok:
+            return jsonify({'error': '삭제 실패'}), 500
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"태그 삭제 오류: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/email-tags', methods=['POST', 'DELETE'])
+def email_tags_handler():
+    try:
+        data = request.json or {}
+        email_path = data.get('email_path')
+        tag_id = data.get('tag_id')
+        if not email_path or not tag_id:
+            return jsonify({'error': 'email_path와 tag_id가 필요합니다.'}), 400
+
+        # 검증: 경로가 루트 안에 존재하는지 확인
+        try:
+            abs_path = normalize_and_validate_path(EMAIL_ROOT, email_path)
+            if not os.path.exists(abs_path):
+                return jsonify({'error': '이메일 파일이 존재하지 않습니다.'}), 404
+        except ValueError:
+            return jsonify({'error': '유효하지 않은 경로입니다.'}), 400
+
+        if request.method == 'POST':
+            ok = TagManager.add_tag_to_email(email_path, int(tag_id))
+            return jsonify({'success': bool(ok)})
+        else:
+            ok = TagManager.remove_tag_from_email(email_path, int(tag_id))
+            return jsonify({'success': bool(ok)})
+    except Exception as e:
+        logger.error(f"이메일 태그 처리 오류: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/email-status', methods=['GET'])
+def get_email_status():
+    try:
+        email_path = request.args.get('email_path')
+        if not email_path:
+            return jsonify({'error': 'email_path가 필요합니다.'}), 400
+        # 경로 검증
+        try:
+            abs_path = normalize_and_validate_path(EMAIL_ROOT, email_path)
+            if not os.path.exists(abs_path):
+                return jsonify({'error': '이메일 파일이 존재하지 않습니다.'}), 404
+        except ValueError:
+            return jsonify({'error': '유효하지 않은 경로입니다.'}), 400
+        return jsonify(EmailStatusManager.get_email_status(email_path))
+    except Exception as e:
+        logger.error(f"이메일 상태 조회 오류: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/email-status/read', methods=['POST'])
+def mark_email_read():
+    try:
+        email_path = (request.json or {}).get('email_path')
+        if not email_path:
+            return jsonify({'error': 'email_path가 필요합니다.'}), 400
+        try:
+            abs_path = normalize_and_validate_path(EMAIL_ROOT, email_path)
+            if not os.path.exists(abs_path):
+                return jsonify({'error': '이메일 파일이 존재하지 않습니다.'}), 404
+        except ValueError:
+            return jsonify({'error': '유효하지 않은 경로입니다.'}), 400
+        ok = EmailStatusManager.mark_as_read(email_path)
+        return jsonify({'success': bool(ok)})
+    except Exception as e:
+        logger.error(f"읽음 표시 오류: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/email-status/star', methods=['POST'])
+def toggle_email_star():
+    try:
+        email_path = (request.json or {}).get('email_path')
+        if not email_path:
+            return jsonify({'error': 'email_path가 필요합니다.'}), 400
+        try:
+            abs_path = normalize_and_validate_path(EMAIL_ROOT, email_path)
+            if not os.path.exists(abs_path):
+                return jsonify({'error': '이메일 파일이 존재하지 않습니다.'}), 404
+        except ValueError:
+            return jsonify({'error': '유효하지 않은 경로입니다.'}), 400
+        new_state = EmailStatusManager.toggle_star(email_path)
+        return jsonify({'is_starred': bool(new_state)})
+    except Exception as e:
+        logger.error(f"별표 토글 오류: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# 인덱싱 API
+def _run_rebuild(email_root: str):
+    global _index_progress
+    with _index_lock:
+        _index_progress = {"total": 0, "processed": 0, "phase": "initializing"}
+    try:
+        indexer = EmailIndexer(email_root)
+        indexer.initialize_schema()
+        with _index_lock:
+            _index_progress["phase"] = "scanning"
+        stats = indexer.full_scan_and_index()
+        with _index_lock:
+            _index_progress.update({**stats, "phase": "completed"})
+    except Exception:
+        with _index_lock:
+            _index_progress["phase"] = "error"
+
+
+@app.route('/api/index/rebuild', methods=['POST'])
+def index_rebuild():
+    if not EMAIL_ROOT or not os.path.exists(EMAIL_ROOT):
+        return jsonify({'error': '메일 루트 폴더가 설정되지 않았습니다.'}), 400
+    # 백그라운드 작업 시작
+    t = Thread(target=_run_rebuild, args=(EMAIL_ROOT,), daemon=True)
+    t.start()
+    return jsonify({'started': True})
+
+
+@app.route('/api/index/progress', methods=['GET'])
+def index_progress():
+    with _index_lock:
+        return jsonify(_index_progress.copy())
+
 def initialize_app():
     """애플리케이션 초기화"""
     try:
@@ -317,6 +432,13 @@ def initialize_app():
         logger.info("데이터베이스 초기화 중...")
         init_db()
         logger.info("데이터베이스 초기화 완료")
+
+        # 인덱스 스키마 준비
+        try:
+            if EMAIL_ROOT:
+                EmailIndexer(EMAIL_ROOT).initialize_schema()
+        except Exception as e:
+            logger.warning(f"인덱스 스키마 준비 경고: {e}")
         
         # 기본 설정 확인
         if not EMAIL_ROOT:

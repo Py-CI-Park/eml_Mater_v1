@@ -1,0 +1,75 @@
+프로젝트: 로컬 .eml 탐색/보기/검색/첨부 다운로드 웹앱 재개발
+
+배경/문제:
+- 대용량 폴더에서 기존 전체 순회+본문 파싱 기반 검색이 느림
+- 경로 처리 보안 미흡(루트 이탈 가능성)
+- 데이터 계층(태그/상태/인덱스)와 API 불일치
+- 운영 가시성/테스트/배포 체계 미흡
+
+목표(SMART):
+- 성능: 10만 .eml 기준 제목/보낸이/본문 키워드 검색 p95 ≤ 1s
+- 보안: 루트 밖 파일 접근 0건, XSS 0건
+- 안정성: 손상/인코딩 오류 99% 무중단 처리
+- 사용성: 3클릭 열람, 2클릭 다운로드
+- 운영: Windows 단일 실행 시작 ≤ 10s, 상태 점검 엔드포인트 제공
+
+범위:
+- 백엔드 API(Flask 유지), 이메일 파싱/인덱싱 서비스, SQLite(+FTS5)
+- 프론트엔드(React) UI/UX 개선, 검색/상태/태그 연동
+- 설정/로그/보안/배포 자동화, 테스트/품질관리
+
+아키텍처:
+- 레이어: api(라우터)/services(파싱·인덱싱·검색)/repos(DB)/core(유틸)
+- DB: SQLite + FTS5 가상 테이블(emails_fts)
+- 인덱싱: 초기 풀스캔 + 증분(mtime/sha1)
+- 보안: 경로 정규화+루트 접두 검증, CORS 최소권한, 첨부 화이트리스트
+
+핵심 기능 요구사항:
+- 폴더/이메일 목록: `.eml` 필터, 정렬/페이징
+- 이메일 보기: 헤더/본문(Text/HTML)/첨부 목록
+- 첨부 다운로드: 안전한 파일명 검증 및 헤더 처리
+- 검색: FTS5 기반(제목/보낸이/본문), limit/paging
+- 태그/상태: CRUD 및 이메일 연결, 읽음/별표 토글
+- 설정/상태/통계: config GET/POST, health/stats, 인덱싱 진행률
+
+API(요약):
+- GET /api/health
+- GET/POST /api/config
+- GET /api/folders
+- GET /api/emails/{folder|root}
+- GET /api/email/{folder|root}/{filename}
+- GET /api/attachment/{folder|root}/{filename}/{attachment}
+- POST /api/search { query, search_in[], limit? }
+- GET/POST/DELETE /api/tags
+- POST/DELETE /api/email-tags
+- GET /api/email-status?email_path=...
+- POST /api/email-status/read
+- POST /api/email-status/star
+- POST /api/index/rebuild, GET /api/index/progress, GET /api/stats
+
+데이터 모델(요약):
+- emails(email_path PK, subject, sender, recipient, date_parsed, message_id, has_attachments, size_bytes, sha1)
+- emails_fts(FTS5): email_path, subject, sender, recipient, body_text
+- email_status(email_path PK, is_read, is_starred, last_viewed)
+- tags(id, name, color), email_tags(email_path, tag_id UNIQUE), user_settings(key, value)
+
+품질/보안 요구사항:
+- 타입 힌트/Docstring, 표준화된 에러/로깅(JSON 옵션)
+- 경로 유틸로 파일 접근 일원화, 테스트로 루트 이탈 차단 보장
+- DOMPurify 적용(프론트), CORS 제한, 127.0.0.1 바인딩
+- 테스트: pytest/RTL/E2E, 커버리지 ≥ 80% 목표
+
+마일스톤:
+- M1(보안/기초): 경로 유틸·FTS5 스키마/인덱서·검색 API 연결·기본 테스트
+- M2(성능/검색): 증분 인덱싱, 페이징/가상스크롤, 튜닝
+- M3(UX/운영): 태그/상태 UI, 상태/로그 뷰, 접근성
+- M4(배포/문서): Windows 단일 실행, 문서/가이드 완성
+
+제약/가정:
+- 오프라인/로컬 전용, Windows 최우선 지원
+- Python 내장 sqlite3의 FTS5 사용 가능 가정
+
+수용 기준(예시):
+- 10만 메일 인덱스 후 제목 키워드 검색 p95 ≤ 1s 측정치 제공
+- 루트 이탈 경로 테스트 케이스 통과
+- 첨부 다운로드 화이트리스트/헤더 검증 테스트 통과
