@@ -54,3 +54,4 @@ def test_paging_and_count(monkeypatch):
         results2 = SearchIndexManager.search_emails("Hello", limit=1, offset=1, order="date_desc")
         assert len(results2) == 1
 
+
