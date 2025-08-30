@@ -15,12 +15,14 @@
 ## 🏗️ 기술 스택
 
 ### 백엔드 (Flask)
+
 - **Python 3.7+**
 - **Flask**: 웹 서버 프레임워크
 - **SQLite**: 메타데이터 저장
 - **Email 라이브러리**: .eml 파일 파싱
 
 ### 프론트엔드 (React)
+
 - **React 18**: 사용자 인터페이스
 - **Bootstrap 5**: UI 컴포넌트
 - **Axios**: API 통신
@@ -28,7 +30,7 @@
 
 ## 📁 프로젝트 구조
 
-```
+```text
 email-manager/
 ├── backend/                    # Flask 백엔드
 │   ├── app.py                 # 메인 애플리케이션
@@ -63,25 +65,52 @@ python run.py
 ```
 
 이 스크립트는 다음 작업을 자동으로 수행합니다:
+
 1. 시스템 요구사항 확인
 2. Python 및 Node.js 의존성 설치
 3. 백엔드 및 프론트엔드 서버 실행
 
+### Windows 원클릭 설치/실행
+
+Windows에서는 배치 스크립트로 더 간단하게 설치/실행할 수 있습니다. 자세한 내용은 `README_WINDOWS.md`를 참고하세요. 핵심 흐름만 요약하면:
+
+- 설치 전 준비: Python 3.7+ (설치 시 "Add Python to PATH" 체크), Node.js 14+ 설치
+- 통합 설치 실행:
+  - 파일 탐색기에서 `INSTALL.bat` 더블클릭
+  - 모드 선택: [1] 빠른 설치(권장) / [2] 고급 설치 / [3] 상태 확인
+- 실행 방법:
+  - 바탕화면에 생성된 "이메일 관리자" 바로가기 실행, 또는 `run_server.bat` 실행
+  - 브라우저 자동 열림 또는 수동 접속: `http://localhost:3000`
+- 종료: `stop_server.bat` 실행 (포트 3000/5000 프로세스 정리)
+- 상태 확인: `check_status.bat`로 환경/포트/실행 상태 점검
+- 문제 해결(단계별): `단계별검증.bat`에서 1~8 단계별 재검증 및 설치 지원
+
+배치 스크립트 요약:
+
+- `INSTALL.bat`: 통합 설치(가상환경, 의존성, 설정, 바로가기 생성)
+- `run_server.bat`: 백엔드/프론트엔드 서버 시작
+- `stop_server.bat`: 실행 중인 서버 안전 종료
+- `check_status.bat`: Python/Node/npm/포트/설정 상태 점검
+- `단계별검증.bat`: 설치 각 단계를 개별 또는 일괄 점검/수행
+
 ### 수동 설치 및 실행
 
 #### 1. 저장소 클론
+
 ```bash
 git clone <repository-url>
 cd email-manager
 ```
 
 #### 2. 백엔드 설정
+
 ```bash
 cd backend
 pip install -r requirements.txt
 ```
 
 #### 3. 프론트엔드 설정
+
 ```bash
 cd frontend
 npm install
@@ -90,12 +119,14 @@ npm install
 #### 4. 서버 실행
 
 **백엔드 실행 (터미널 1):**
+
 ```bash
 cd backend
 python app.py
 ```
 
 **프론트엔드 실행 (터미널 2):**
+
 ```bash
 cd frontend
 npm start
@@ -104,14 +135,15 @@ npm start
 ### 접속
 
 브라우저에서 다음 주소로 접속:
-- **프론트엔드**: http://localhost:3000
-- **백엔드 API**: http://localhost:5000
+
+- **프론트엔드**: `http://localhost:3000`
+- **백엔드 API**: `http://localhost:5000`
 
 ## 📋 사용법
 
 ### 1. 초기 설정
 
-1. 브라우저에서 http://localhost:3000에 접속
+1. 브라우저에서 `http://localhost:3000`에 접속
 2. 상단 네비게이션에서 "설정" 클릭
 3. "이메일 루트 폴더 경로"에 .eml 파일들이 저장된 폴더 경로 입력
    - 예시: `/home/user/emails` (Linux/Mac) 또는 `C:\Emails` (Windows)
@@ -177,12 +209,14 @@ npm start
 다른 애플리케이션이 포트 3000 또는 5000을 사용 중인 경우:
 
 **백엔드 포트 변경:**
-```bash
+
+```python
 # backend/app.py 수정
 app.run(host='127.0.0.1', port=5001, debug=True)
 ```
 
 **프론트엔드 포트 변경:**
+
 ```bash
 cd frontend
 PORT=3001 npm start
